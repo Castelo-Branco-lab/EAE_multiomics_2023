@@ -1,0 +1,323 @@
+---
+title: "bulk_rna_atac"
+author: "Eneritz"
+date: "2024-10-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+ATAC_nf/outs  
+RNA_nf/outs
+
+
+```{bash}
+
+
+ #control vs 6
+ paste  OPC_6_REP1/quant.genes.sf OPC_6_REP2/quant.genes.sf OPC_6_REP3/quant.genes.sf OPC_1_REP1/quant.genes.sf OPC_1_REP2/quant.genes.sf OPC_1_REP3/quant.genes.sf | cut -f 1,10,15,25,30 | awk '{print $1"\t"int($2)"\t"int($3)"\t"int($4)"\t"int($5)}' > OPC_6_1_2batches_RNA_gene_counts_int.table
+
+paste  OPC_6_REP1/quant.genes.sf OPC_6_REP2/quant.genes.sf OPC_6_REP3/quant.genes.sf OPC_8_REP1/quant.genes.sf OPC_8_REP2/quant.genes.sf OPC_8_REP3/quant.genes.sf | cut -f 1,10,15,25,30 | awk '{print $1"\t"int($2)"\t"int($3)"\t"int($4)"\t"int($5)}' > OPC_6_8_2batches_RNA_gene_counts_int.table
+
+paste  OPC_6_REP1/quant.genes.sf OPC_6_REP2/quant.genes.sf OPC_6_REP3/quant.genes.sf OPC_11_REP1/quant.genes.sf OPC_11_REP2/quant.genes.sf OPC_11_REP3/quant.genes.sf | cut -f 1,10,15,25,30 | awk '{print $1"\t"int($2)"\t"int($3)"\t"int($4)"\t"int($5)}' > OPC_6_11_2batches_RNA_gene_counts_int.table
+
+paste  OPC_6_REP1/quant.genes.sf OPC_6_REP2/quant.genes.sf OPC_6_REP3/quant.genes.sf OPC_11_REP1/quant.genes.sf OPC_11_REP2/quant.genes.sf OPC_11_REP3/quant.genes.sf | cut -f 1,5,10,15,20,25,30 | awk '{print $1"\t"int($2)"\t"int($3)"\t"int($4)"\t"int($5)"\t"int($6)"\t"int($7)}' > OPC_6_11_3batches_RNA_gene_counts_int.table
+
+```
+```{r}
+library(edgeR)
+
+
+Counts <- read.table("Bulk_rna_atac_IFNG/RNA_salmon/OPC_6_1_2batches_RNA_gene_counts_int.table" , row.names=1)
+colnames(Counts) <- c(  "OPC_6_REP2" ,"OPC_6_REP3" , "OPC_1_REP2" , "OPC_1_REP3")
+
+
+y <- DGEList(counts=Counts, genes=rownames(Counts))
+ o <- order(rowSums(y$counts), decreasing=TRUE)
+ y <- y[o,]
+ dim(y)
+ 
+ d <- duplicated(y$genes)
+ y <- y[!d,]
+ nrow(y)
+
+ 
+ y$samples$lib.size <- colSums(y$counts)
+  barplot(y$samples$lib.size*1e-6, names=1:4, ylab="Library size (millions)")
+ 
+y <- calcNormFactors(y , method="TMM")
+y$samples
+plotMDS(y)
+
+ day <- factor(c(2,3,2,3))
+ condition <- factor(c("OPC_6", "OPC_6" , "OPC_1" , "OPC_1" ))
+ data.frame(Sample=colnames(y),day,condition)
+ 
+  design <- model.matrix(~day+condition)
+  rownames(design) <- colnames(y)
+  design
+  
+  y <- estimateDisp(y, design, robust=TRUE)
+  y$common.dispersion 
+  #[1] 0.1258445
+  
+  plotBCV(y)
+
+  fit <- glmFit(y, design)
+  
+  lrt <- glmLRT(fit)
+  topTags(lrt)
+  
+  
+  o <- order(lrt$table$PValue)
+  
+  #the CPM for the top genes
+  cpm(y)[o[1:10],]
+  #the total number of differentially expressed genes at 5% FDR is:
+  summary(decideTests(lrt))
+  
+  plotMD(lrt)
+  abline(h=c(-1, 1), col="blue")
+ 
+ 
+
+dim(Counts)
+
+  edgeR_result_quant <- topTags(lrt, n = 45708 , adjust.method = "BH", sort.by = "PValue", p.value = 1)
+
+ 
+  
+```
+```{r}
+library(biomaRt)
+
+mart <- biomaRt::useMart(biomart = "ENSEMBL_MART_ENSEMBL",
+                         dataset = "mmusculus_gene_ensembl",
+                         host = "http://www.ensembl.org")
+ library(biomaRt)
+genes <- getBM(filters = "ensembl_gene_id",
+               attributes = c("ensembl_gene_id","mgi_symbol"),
+               values = rownames(Counts), 
+               mart = mart)
+
+
+colnames(genes) <- c("genes" , "mgi_symbol" )
+
+edgeR_result_quant.genes  <- full_join( x = as.data.frame(edgeR_result_quant) , y = as.data.frame(genes) , by ="genes")
+
+edgeR_result_quant.genes
+
+
+```
+
+#minimal fc abs(0.5)
+```{bash}
+awk '{ if ( $6 < 0.05 ) { print $_ } }'  OPC_6_1_2batches_DGE_edgeR_table_genes.res_141024_genessymbol.res | sort -rnk3   | awk '{ if ($3 >=  0.5 ) { print $_ }}' > UP_OPC6_lf05_FDR005_2batches_RNA_edger.out
+
+ awk '{ if ( $6 < 0.05 ) { print $_ } }'  OPC_6_1_2batches_DGE_edgeR_table_genes.res_141024_genessymbol.res | sort -rk3   | awk '{ if ($3 <=  -0.5 ) { print $_ }}' > UP_OPC1_lf05_FDR005_2batches_RNA_edger.out
+
+
+ awk '{ if ( $6 < 0.05 ) { print $_ } }'  OPC_6_1_2batches_DGE_edgeR_table_genes.res_141024_genessymbol.res  > sig_test_OPC_6_1.res
+```
+
+#ATAC
+#TSS promoters
+```{bash}
+
+
+for fn in OPC*sorted.bam ; do bedtools bamtobed -i "$fn" | awk '{ print "chr"$_ }'  > "$fn".bed ; done
+
+for fn in OPC*sorted.bam.bed ; do wc -l "$fn" > "$fn".Ntotal ; done
+
+```
+
+
+### running cov in all merged tss extended 1001 bp from the merged center
+```{bash}
+ MM10_ENS102_genes_TSS_ENGTXT_AllTSSresizetoCenter1001bp_1stGENE.bed
+
+#for each condition
+files= OPC_11_REP1
+for fn in files ; do bedtools coverage -a  MM10_ENS102_genes_TSS_ENGTXT_AllTSSresizetoCenter1001bp_1stGENE.bed  -b "$fn".mLb.clN.sorted.bam.bed |  awk '{    print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6"\t"(($7) / ( ($9)/1000 "$fn".Ntotal /1000000))"\t"$7"\t"$9 }' > "$fn".AllTSS_cov ; done
+
+
+
+```
+
+Enhancers
+
+```{bash}
+#all the enhancers ENCODE
+cat MM10_ENCODE_enhDist_cCREs_061124_UCSC.bed MM10_ENCODE_enhProx_cCREs_061124_UCSC.bed > MM10_ENCODE_enhProxDist_cCREs_061124_UCSC.bed
+
+bedtools intersect -v -a MM10_ENCODE_enhProxDist_cCREs_061124_UCSC.bed -b MM10_ENS102_genes_TSS_ENGTXT_AllTSSresizetoCenter1001bp.bed  > MM10_ENCODE_enhProxDist_cCREs_061124_UCSC_noTSS.bed
+
+sed 's/\s/\t/g' MM10_ENCODE_enhProxDist_cCREs_061124_UCSC_noTSS.bed |  awk '{ le=$3-$2+1 ; { print le"\t"$_ }}' |  awk '{ split($5,a,":") ; len=$4-$3+1 ; center=$3+len/2 ; { print $2"\t"int(center-500)"\t"int(center+500)"\t"$5":"$14"\t.\t+"  }}'  > MM10_ENCODE_enhProxDist_cCREs_061124_UCSC_noTSS_center1001bp.bed
+
+
+
+
+Peak_selection/consensus_peaks.mLb.clN_CHR.bed
+
+
+bedtools intersect -u -a MM10_ENCODE_enhProxDist_cCREs_061124_UCSC_noTSS_center1001bp.bed -b consensus_peaks.mLb.clN_CHR.bed  > MM10_ENCODE_enhProxDist_cCREs_061124_UCSC_noTSS_center1001bp_consensus.interc
+
+#merge my windowns 
+
+/home/eneritz/Tools/bedtools-2.17.0/bin/mergeBed -i MM10_ENCODE_enhProxDist_cCREs_061124_UCSC_noTSS_center1001bp_consensus.interc -s -nms | awk '{ le=$3-$2+1 ; { print le"\t"$_ }}' |  awk '{ len=$4-$3+1 ; center=$3+len/2 ; { print $2"\t"int(center-500)"\t"int(center+500)"\t"$5"\t.\t"$6"\t"$_  }}' | cut -f 1-6 |  sort -u > MM10_ENCODE_enhProxDist_cCREs_061124_UCSC_noTSS_center1001bp_consensus_intersec_MergedEnhresize.bed 
+
+
+#the check  
+awk '{ if ($2 < 0 ) { print $_ }}' MM10_ENCODE_enhProxDist_cCREs_061124_UCSC_noTSS_center1001bp_consensus_intersec_MergedEnhresize.bed
+
+```
+BH enhancers
+```{r}
+enhancers <- readRDS("MORNAATACC/Outputs/EAE_multiomics_OLG_peaks2genes.rds")
+head(enhancers)
+write.table(enhancers , file="EAE_multiomics_OLG_peaks2genes_BH.tab")
+```
+
+
+```{bash}
+sed -i 's/\"//g' Bulk_rna_atac_IFNG/EAE_multiomics_OLG_peaks2genes_BH.tab
+sed -i 's/\s/\t/g' Bulk_rna_atac_IFNG/EAE_multiomics_OLG_peaks2genes_BH.tab
+cut -f 2-11 EAE_multiomics_OLG_peaks2genes_BH.tab > EAE_multiomics_OLG_peaks2genes_BH.bed
+
+ awk '{ split($8,a,"-") ; { print a[1]"\t"a[2]"\t"a[3]"\t"$7"\t"$_ }}'  EAE_multiomics_OLG_peaks2genes_BH.bed
+
+ awk '{ split($8,a,"-") ; { print a[1]"\t"a[2]"\t"a[3]"\t"$7"\t"$_ }}'  EAE_multiomics_OLG_peaks2genes_BH.bed > EAE_multiomics_OLG_peaks2genes_BH_peakcoord.bed
+```
+```{r}
+OPC8_ATAC <- read.table("OPC_bulkATAC_Enh.raw")
+
+OPC8_ATAC$V4 <- make.unique(OPC8_ATAC$V4)
+
+OPC8_ATAC <- OPC8_ATAC %>% dplyr::select( c(V4,V6:V20)) %>% column_to_rownames("V4")
+
+colnames(OPC8_ATAC) <- c("OPC1_r1", "OPC1_r2","OPC1_r3","OPC6_r1" , "OPC6_r2" , "OPC6_r3" , "OPC2_r1" , "OPC2_r2" ,"OPC2_r3" ,"OPC8_r1" ,"OPC8_r2" ,"OPC8_r3" ,  "OPC11_r1" , "OPC11_r2"  ,"OPC11_r3" )
+library(tidyr)
+meta_data <- data.frame(colnames(OPC8_ATAC)) %>%
+separate(colnames.OPC8_ATAC., into=c("treatment","rep"), sep =
+"\\_r", remove = FALSE)  %>% column_to_rownames(var="colnames.OPC8_ATAC.")
+ 
+meta_data$rep <- factor(meta_data$rep)
+meta_data$treatment <- factor(meta_data$treatment)
+
+all(colnames(OPC8_ATAC) %in% rownames(meta_data))
+all(colnames(OPC8_ATAC) == rownames(meta_data))
+
+
+
+
+dds <- DESeqDataSetFromMatrix(countData = OPC8_ATAC, colData = meta_data, design = ~ treatment)
+
+
+dds <- estimateSizeFactors(dds)
+
+sizeFactors(dds)
+
+normalized_counts <- counts(dds, normalized=TRUE)
+```
+```{r}
+
+
+OPC8_ATAC <- read.table("OPC_bulkATAC_Enh.raw")
+head(OPC8_ATAC)
+
+OPC8_ATAC$V4 <- make.unique(OPC8_ATAC$V4)
+
+
+OPC8_ATAC <- OPC8_ATAC %>% dplyr::select( c(V4,V7:V8,V10:V11,V13:V14,V19:V20,V16:V17)) %>% column_to_rownames("V4")
+
+colnames(OPC8_ATAC) <- c("OPC1_r2","OPC1_r3", "OPC6_r2" , "OPC6_r3" ,  "OPC2_r2" ,"OPC2_r3" ,"OPC11_r2" ,"OPC11_r3" ,   "OPC8_r2"  ,"OPC8_r3" )
+
+
+counts <- OPC8_ATAC
+counts_round <- round(counts, digits = 0)
+
+library(dplyr)
+counts_round <- counts_round %>%
+ dplyr::filter(rowSums(.) > 0)
+
+# extract meta_data
+library(tidyr)
+meta_data <- data.frame(sample=colnames(OPC8_ATAC)) %>%
+separate(sample, into=c("treatment","rep"), sep =
+"\\_r", remove = FALSE) %>%
+ unite(col = "condition", treatment, remove = FALSE)
+meta_data$condition <- factor(meta_data$condition)
+meta_data$treatment <- factor(meta_data$treatment)
+
+ library(DESeq2)
+
+ dds_new <- DESeqDataSetFromMatrix(countData = counts_round,
+ colData = meta_data,
+ design= ~ treatment)
+ # Normalization
+dds_new <- estimateSizeFactors(dds_new)
+ dds_rlog <- rlog(dds_new)
+dds_vst <- varianceStabilizingTransformation(dds_new)
+assay(dds_new, "rlog") <- assay(dds_rlog)
+assay(dds_new, "vst") <- assay(dds_vst)
+
+
+
+library(DESeq2)
+
+counts_vst <- dds_new@assays@data$vst
+
+
+
+#saveRDS( counts_vst , file="norm_deseq2_2reps_ATAC_Enh_table_181124.rds")
+```
+#matrix TSS
+ OPC_bulkATAC_AllTSS.raw
+
+###################################
+
+normalize counts over promoters (do the same for enhancer regions)
+```{r}
+OPC8_ATAC <- read.table("OPC_bulkATAC_AllTSS.raw")
+
+OPC8_ATAC$V4 <- make.unique(OPC8_ATAC$V4)
+
+OPC8_ATAC <- OPC8_ATAC %>% dplyr::select( c(V4,V6:V20)) %>% column_to_rownames("V4")
+
+colnames(OPC8_ATAC) <- c("OPC1_r1", "OPC1_r2","OPC1_r3","OPC6_r1" , "OPC6_r2" , "OPC6_r3" , "OPC2_r1" , "OPC2_r2" ,"OPC2_r3" ,"OPC8_r1" ,"OPC8_r2" ,"OPC8_r3" ,  "OPC11_r1" , "OPC11_r2"  ,"OPC11_r3" )
+library(tidyr)
+meta_data <- data.frame(colnames(OPC8_ATAC)) %>%
+separate(colnames.OPC8_ATAC., into=c("treatment","rep"), sep =
+"\\_r", remove = FALSE)  %>% column_to_rownames(var="colnames.OPC8_ATAC.")
+ 
+meta_data$rep <- factor(meta_data$rep)
+meta_data$treatment <- factor(meta_data$treatment)
+
+### Check that sample names match in both files
+all(colnames(OPC8_ATAC) %in% rownames(meta_data))
+all(colnames(OPC8_ATAC) == rownames(meta_data))
+
+
+
+
+dds <- DESeqDataSetFromMatrix(countData = OPC8_ATAC, colData = meta_data, design = ~ treatment)
+
+
+dds <- estimateSizeFactors(dds)
+
+sizeFactors(dds)
+
+normalized_counts <- counts(dds, normalized=TRUE)
+
+#write.table( normalized_counts , file="OPC_bulkATAC_AllTSS_norCOunts.txt")
+
+
+atac_round <- round(normalized_counts, digits = 0)
+
+#write.table( atac_round , file="OPC_bulkATAC_AllTSS_norCOuntsRounded.txt")
+```
+
+#same for the enhancers
+
+
+
