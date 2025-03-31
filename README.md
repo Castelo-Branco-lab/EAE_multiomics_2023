@@ -37,5 +37,5 @@ All plots from the manuscript are displayed in the notebooks.
 To have a quick look at each jupyter notebook in .html format, convert each file as follow :
 
 ```
-jupyter nbconvert --to html EAE_multiomics_2025.ipynb
+jupyter nbconvert --to html EAE_multiomics_2023.ipynb
 ```
