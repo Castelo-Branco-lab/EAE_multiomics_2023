@@ -20,9 +20,9 @@ A total of 7 batches were collected from the sequencing facility. Fastq files fr
 
 ## Documents
 
-**EAE_multiomics_2025** : Jupyter notebooks containing R and/or Python code to recreate figures containing all cell types
+**EAE_multiomics_2023** : Jupyter notebooks containing R and/or Python code to recreate figures containing all cell types
 
-**EAE_multiomics_2025_OL** : Jupyter notebooks containing R and/or Python code to recreate figures containing only oligodendrocytes lineage
+**EAE_multiomics_2023_OL** : Jupyter notebooks containing R and/or Python code to recreate figures containing only oligodendrocytes lineage
 
 **MOL_GRN_CZ_BHpeak_selection.R** : R code to generate gene regulatory network and transcription factors plots
 
